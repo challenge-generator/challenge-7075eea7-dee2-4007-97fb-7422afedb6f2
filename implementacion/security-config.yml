@@ -1,0 +1,87 @@
+# =============================================
+# Configuración de Seguridad para Pipeline CI/CD
+# =============================================
+# SUPERFICIE DE PRÁCTICA - COMPLETAR POR EL PARTICIPANTE
+#
+# Este archivo define las políticas de seguridad para el pipeline CI/CD,
+# incluyendo integración con AWS IAM, herramientas SAST/DAST y
+# configuración de permisos para los roles involucrados.
+#
+# Objetivo:
+# - Implementar Shift-Left Security integrando herramientas de seguridad
+#   en las etapas tempranas del pipeline.
+# - Definir roles y permisos para equipos de desarrollo, operaciones y seguridad.
+#
+# Instrucciones:
+# 1. Completar las secciones marcadas con # TODO.
+# 2. Asegurar que las políticas de IAM sigan el principio de mínimo privilegio.
+# 3. Configurar herramientas SAST/DAST para escaneo en etapas previas al despliegue.
+
+version: "1.0"
+
+# Configuración de AWS IAM
+iam:
+  roles:
+    # TODO: Definir roles para equipos de desarrollo, operaciones y seguridad
+    development:
+      description: "Rol para equipo de desarrollo"
+      # TODO: Especificar políticas de permisos para desarrollo
+      policies:
+        - ""
+    operations:
+      description: "Rol para equipo de operaciones"
+      # TODO: Especificar políticas de permisos para operaciones
+      policies:
+        - ""
+    security:
+      description: "Rol para equipo de seguridad"
+      # TODO: Especificar políticas de permisos para seguridad
+      policies:
+        - ""
+
+# Herramientas de seguridad
+security_tools:
+  # SAST (Static Application Security Testing)
+  sast:
+    enabled: true
+    # TODO: Configurar herramienta SAST (ej: Checkmarx, SonarQube)
+    tool: ""
+    scan_phases:
+      - "pre_build"
+    # TODO: Definir reglas y umbrales de severidad
+    rules:
+      - severity: "high"
+        action: "fail"
+
+  # DAST (Dynamic Application Security Testing)
+  dast:
+    enabled: true
+    # TODO: Configurar herramienta DAST (ej: OWASP ZAP, Burp Suite)
+    tool: ""
+    scan_phases:
+      - "post_build"
+    # TODO: Definir endpoints a escanear y umbrales de severidad
+    target_endpoints:
+      - ""
+
+  # Secrets Scanning
+  secrets_scanning:
+    enabled: true
+    # TODO: Configurar herramienta de escaneo de secretos (ej: GitLeaks, AWS Secrets Manager)
+    tool: ""
+    scan_phases:
+      - "pre_build"
+
+# Permisos de acceso a recursos
+resource_permissions:
+  # TODO: Definir permisos para buckets S3, CodeBuild, CodePipeline, etc.
+  s3:
+    - resource: "arn:aws:s3:::codebuild-artifacts-*"
+      actions:
+        - "s3:GetObject"
+        - "s3:PutObject"
+  codebuild:
+    - resource: "*"
+      actions:
+        - "codebuild:StartBuild"
+        - "codebuild:BatchGetBuilds"

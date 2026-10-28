@@ -1,0 +1,174 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "Template de despliegue para pipeline CI/CD en entorno SOA"
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: "soa-devops"
+    Description: "Nombre del entorno de despliegue"
+
+Resources:
+  # Bucket S3 para artifacts del pipeline
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${EnvironmentName}-artifacts-${AWS::AccountId}"
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldArtifacts
+            Status: Enabled
+            ExpirationInDays: 30
+
+  # Rol IAM para CodeBuild
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${EnvironmentName}-codebuild-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildBasePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                Resource: !Sub "arn:aws:s3:::${ArtifactBucket}/*"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::${ArtifactBucket}"
+
+  # Proyecto CodeBuild
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${EnvironmentName}-build-project"
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
+        EnvironmentVariables:
+          - Name: ENVIRONMENT
+            Value: !Ref EnvironmentName
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: implementacion/buildspec.yml
+      TimeoutInMinutes: 10
+
+  # Rol IAM para CodePipeline
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${EnvironmentName}-codepipeline-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodePipelineBasePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:PutObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${ArtifactBucket}"
+                  - !Sub "arn:aws:s3:::${ArtifactBucket}/*"
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: "*"
+
+  # Pipeline CI/CD
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub "${EnvironmentName}-pipeline"
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              Configuration:
+                RepositoryName: !Sub "${EnvironmentName}-repo"
+                BranchName: main
+              OutputArtifacts:
+                - Name: SourceOutput
+        - Name: Build
+          Actions:
+            - Name: BuildAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+        - Name: Deploy
+          Actions:
+            - Name: DeployAction
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_IAM
+                RoleArn: !GetAtt CodePipelineRole.Arn
+                StackName: !Sub "${EnvironmentName}-stack"
+                TemplatePath: BuildOutput::implementacion/deployment-template.yml
+              InputArtifacts:
+                - Name: BuildOutput
+
+Outputs:
+  ArtifactBucketName:
+    Description: "Nombre del bucket S3 para artifacts"
+    Value: !Ref ArtifactBucket
+  CodeBuildProjectName:
+    Description: "Nombre del proyecto CodeBuild"
+    Value: !Ref CodeBuildProject
+  CodePipelineName:
+    Description: "Nombre del pipeline CI/CD"
+    Value: !Ref CodePipeline"

@@ -1,0 +1,681 @@
+openapi: 3.1.0
+info:
+  title: Contrato de Integración para Pipeline de CI/CD en Entorno SOA
+  description: |-
+    Este contrato OpenAPI define los endpoints y schemas para la integración de servicios en un pipeline de CI/CD.
+    Incluye operaciones para la gestión de servicios, despliegues, métricas y monitoreo.
+  version: 1.0.0
+  contact:
+    name: Equipo de Integración SOA
+    email: integracion-soa@empresa.com
+servers:
+  - url: https://api.empresa.com/ci-cd/v1
+    description: Servidor de producción
+  - url: https://api-staging.empresa.com/ci-cd/v1
+    description: Servidor de staging
+paths:
+  /services:
+    get:
+      tags:
+        - Servicios
+      summary: Listar todos los servicios registrados
+      description: Retorna una lista paginada de todos los servicios registrados en el pipeline.
+      operationId: listServices
+      parameters:
+        - name: page
+          in: query
+          description: Número de página
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          description: Número de elementos por página
+          required: false
+          schema:
+            type: integer
+            default: 20
+        - name: status
+          in: query
+          description: Filtrar por estado del servicio
+          required: false
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE, DEPRECATED]
+      responses:
+        "200":
+          description: Lista de servicios
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Service"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+        "400":
+          description: Parámetros de consulta inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags:
+        - Servicios
+      summary: Registrar un nuevo servicio
+      description: Registra un nuevo servicio en el pipeline de CI/CD.
+      operationId: createService
+      requestBody:
+        description: Datos del servicio a registrar
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceInput"
+      responses:
+        "201":
+          description: Servicio registrado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+        "400":
+          description: Datos de entrada inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Conflicto - Servicio ya existe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /services/{id}:
+    get:
+      tags:
+        - Servicios
+      summary: Obtener detalles de un servicio
+      description: Retorna los detalles de un servicio específico.
+      operationId: getService
+      parameters:
+        - name: id
+          in: path
+          description: Identificador único del servicio
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Detalles del servicio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+        "404":
+          description: Servicio no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      tags:
+        - Servicios
+      summary: Actualizar un servicio
+      description: Actualiza los detalles de un servicio existente.
+      operationId: updateService
+      parameters:
+        - name: id
+          in: path
+          description: Identificador único del servicio
+          required: true
+          schema:
+            type: string
+      requestBody:
+        description: Datos actualizados del servicio
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceInput"
+      responses:
+        "200":
+          description: Servicio actualizado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+        "400":
+          description: Datos de entrada inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Servicio no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags:
+        - Servicios
+      summary: Eliminar un servicio
+      description: Elimina un servicio del pipeline.
+      operationId: deleteService
+      parameters:
+        - name: id
+          in: path
+          description: Identificador único del servicio
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Servicio eliminado exitosamente
+        "404":
+          description: Servicio no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /deployments:
+    post:
+      tags:
+        - Despliegues
+      summary: Iniciar despliegue de un servicio
+      description: Inicia el proceso de despliegue de un servicio en un ambiente específico.
+      operationId: createDeployment
+      requestBody:
+        description: Datos del despliegue
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeploymentInput"
+      responses:
+        "202":
+          description: Despliegue iniciado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deployment"
+        "400":
+          description: Datos de entrada inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Servicio o ambiente no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /deployments/{id}:
+    get:
+      tags:
+        - Despliegues
+      summary: Obtener estado de un despliegue
+      description: Retorna el estado actual de un despliegue.
+      operationId: getDeployment
+      parameters:
+        - name: id
+          in: path
+          description: Identificador único del despliegue
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Estado del despliegue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deployment"
+        "404":
+          description: Despliegue no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /metrics/services/{id}:
+    get:
+      tags:
+        - Métricas
+      summary: Obtener métricas de un servicio
+      description: Retorna las métricas de desempeño de un servicio.
+      operationId: getServiceMetrics
+      parameters:
+        - name: id
+          in: path
+          description: Identificador único del servicio
+          required: true
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          description: Fecha de inicio para las métricas (ISO 8601)
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          description: Fecha de fin para las métricas (ISO 8601)
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Métricas del servicio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceMetrics"
+        "400":
+          description: Parámetros de consulta inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Servicio no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    Service:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Identificador único del servicio
+          example: "serv-12345"
+        name:
+          type: string
+          description: Nombre del servicio
+          example: "CustomerProfileService"
+        version:
+          type: string
+          description: Versión del servicio
+          example: "1.2.3"
+        description:
+          type: string
+          description: Descripción del servicio
+          example: "Servicio para gestión de perfiles de clientes"
+        endpoint:
+          type: string
+          description: URL del endpoint del servicio
+          example: "https://api.empresa.com/customer/v1/profile"
+        type:
+          type: string
+          description: Tipo de servicio
+          enum: [OSB, REST, SOAP, GRAPHQL]
+          example: "REST"
+        status:
+          type: string
+          description: Estado del servicio
+          enum: [ACTIVE, INACTIVE, DEPRECATED]
+          example: "ACTIVE"
+        owner:
+          type: string
+          description: Email del propietario del servicio
+          example: "desarrollador@empresa.com"
+        createdAt:
+          type: string
+          format: date-time
+          description: Fecha de creación del servicio
+          example: "2023-01-15T10:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Fecha de última modificación
+          example: "2023-06-20T14:30:00Z"
+        environments:
+          type: array
+          description: Lista de ambientes donde está desplegado
+          items:
+            type: string
+            enum: [DEV, QA, STAGING, PROD]
+          example: ["DEV", "QA"]
+        securityRequirements:
+          type: object
+          description: Requisitos de seguridad del servicio
+          properties:
+            auth:
+              type: string
+              description: Mecanismo de autenticación
+              enum: [BASIC, JWT, OAUTH2, API_KEY]
+              example: "JWT"
+            encryption:
+              type: string
+              description: Requerimiento de cifrado
+              enum: [TLS, NONE]
+              example: "TLS"
+            compliance:
+              type: array
+              description: Estándares de cumplimiento aplicables
+              items:
+                type: string
+                enum: [PCI_DSS, GDPR, ISO_27001, HIPAA]
+              example: ["GDPR", "ISO_27001"]
+      required:
+        - id
+        - name
+        - version
+        - endpoint
+        - type
+        - status
+        - owner
+        - createdAt
+
+    ServiceInput:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Nombre del servicio
+          example: "CustomerProfileService"
+        version:
+          type: string
+          description: Versión del servicio
+          example: "1.2.3"
+        description:
+          type: string
+          description: Descripción del servicio
+          example: "Servicio para gestión de perfiles de clientes"
+        endpoint:
+          type: string
+          description: URL del endpoint del servicio
+          example: "https://api.empresa.com/customer/v1/profile"
+        type:
+          type: string
+          description: Tipo de servicio
+          enum: [OSB, REST, SOAP, GRAPHQL]
+          example: "REST"
+        owner:
+          type: string
+          description: Email del propietario del servicio
+          example: "desarrollador@empresa.com"
+        environments:
+          type: array
+          description: Lista de ambientes donde desplegar
+          items:
+            type: string
+            enum: [DEV, QA, STAGING, PROD]
+          example: ["DEV", "QA"]
+        securityRequirements:
+          type: object
+          description: Requisitos de seguridad del servicio
+          properties:
+            auth:
+              type: string
+              description: Mecanismo de autenticación
+              enum: [BASIC, JWT, OAUTH2, API_KEY]
+              example: "JWT"
+            encryption:
+              type: string
+              description: Requerimiento de cifrado
+              enum: [TLS, NONE]
+              example: "TLS"
+            compliance:
+              type: array
+              description: Estándares de cumplimiento aplicables
+              items:
+                type: string
+                enum: [PCI_DSS, GDPR, ISO_27001, HIPAA]
+              example: ["GDPR", "ISO_27001"]
+      required:
+        - name
+        - version
+        - endpoint
+        - type
+        - owner
+
+    Deployment:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Identificador único del despliegue
+          example: "depl-67890"
+        serviceId:
+          type: string
+          description: Identificador del servicio desplegado
+          example: "serv-12345"
+        environment:
+          type: string
+          description: Ambiente de despliegue
+          enum: [DEV, QA, STAGING, PROD]
+          example: "QA"
+        status:
+          type: string
+          description: Estado del despliegue
+          enum: [PENDING, IN_PROGRESS, SUCCESS, FAILED, ROLLED_BACK]
+          example: "IN_PROGRESS"
+        startedAt:
+          type: string
+          format: date-time
+          description: Fecha de inicio del despliegue
+          example: "2023-07-01T09:00:00Z"
+        completedAt:
+          type: string
+          format: date-time
+          description: Fecha de finalización del despliegue
+          example: "2023-07-01T09:15:00Z"
+        artifacts:
+          type: array
+          description: Lista de artefactos desplegados
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: Nombre del artefacto
+                example: "customer-profile-service-1.2.3.jar"
+              version:
+                type: string
+                description: Versión del artefacto
+                example: "1.2.3"
+              checksum:
+                type: string
+                description: Checksum del artefacto
+                example: "sha256:abc123..."
+      required:
+        - id
+        - serviceId
+        - environment
+        - status
+        - startedAt
+
+    DeploymentInput:
+      type: object
+      properties:
+        serviceId:
+          type: string
+          description: Identificador del servicio a desplegar
+          example: "serv-12345"
+        environment:
+          type: string
+          description: Ambiente de despliegue
+          enum: [DEV, QA, STAGING, PROD]
+          example: "QA"
+        artifacts:
+          type: array
+          description: Lista de artefactos a desplegar
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: Nombre del artefacto
+                example: "customer-profile-service-1.2.3.jar"
+              version:
+                type: string
+                description: Versión del artefacto
+                example: "1.2.3"
+              checksum:
+                type: string
+                description: Checksum del artefacto
+                example: "sha256:abc123..."
+      required:
+        - serviceId
+        - environment
+        - artifacts
+
+    ServiceMetrics:
+      type: object
+      properties:
+        serviceId:
+          type: string
+          description: Identificador del servicio
+          example: "serv-12345"
+        responseTime:
+          type: object
+          description: Métricas de tiempo de respuesta
+          properties:
+            avg:
+              type: number
+              description: Tiempo promedio de respuesta en milisegundos
+              example: 120.5
+            p99:
+              type: number
+              description: Percentil 99 del tiempo de respuesta en milisegundos
+              example: 350.2
+        errorRate:
+          type: number
+          description: Tasa de errores (porcentaje)
+          example: 0.5
+        throughput:
+          type: number
+          description: Throughput (solicitudes por segundo)
+          example: 150
+        availability:
+          type: number
+          description: Disponibilidad (porcentaje)
+          example: 99.95
+        startDate:
+          type: string
+          format: date-time
+          description: Fecha de inicio del periodo de métricas
+          example: "2023-07-01T00:00:00Z"
+        endDate:
+          type: string
+          format: date-time
+          description: Fecha de fin del periodo de métricas
+          example: "2023-07-31T23:59:59Z"
+      required:
+        - serviceId
+        - responseTime
+        - errorRate
+        - throughput
+        - availability
+        - startDate
+        - endDate
+
+    Pagination:
+      type: object
+      properties:
+        totalItems:
+          type: integer
+          description: Número total de elementos
+          example: 100
+        totalPages:
+          type: integer
+          description: Número total de páginas
+          example: 5
+        currentPage:
+          type: integer
+          description: Página actual
+          example: 1
+        itemsPerPage:
+          type: integer
+          description: Elementos por página
+          example: 20
+      required:
+        - totalItems
+        - totalPages
+        - currentPage
+        - itemsPerPage
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Código de error
+          example: "SERVICE_NOT_FOUND"
+        message:
+          type: string
+          description: Mensaje descriptivo del error
+          example: "El servicio solicitado no existe"
+        details:
+          type: object
+          description: Detalles adicionales del error
+          example:
+            field: "id"
+            value: "serv-99999"
+      required:
+        - code
+        - message

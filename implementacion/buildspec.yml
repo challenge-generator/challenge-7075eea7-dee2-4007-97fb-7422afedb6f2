@@ -1,0 +1,51 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+    commands:
+      - echo "Instalando dependencias..."
+      - npm install -g @redocly/cli@1.0.0
+      - echo "Dependencias instaladas."
+
+  pre_build:
+    commands:
+      - echo "Validando contrato OpenAPI..."
+      - npx @redocly/cli lint openapi.yaml
+      - echo "Validación completada."
+
+  build:
+    commands:
+      - echo "Iniciando compilación del proyecto..."
+      - echo "Compilación simulada para entorno SOA."
+      - echo "Verificando mapeo de datos..."
+      - if [ ! -f "mapeo-de-datos.csv" ]; then echo "Error: Archivo mapeo-de-datos.csv no encontrado"; exit 1; fi
+      - echo "Mapeo de datos verificado."
+
+  post_build:
+    commands:
+      - echo "Ejecutando pruebas automatizadas..."
+      - echo "Pruebas de integración simuladas para servicios SOA."
+      - echo "Cobertura de pruebas: >90% (simulada)."
+      - echo "Generando reporte de métricas..."
+      - echo "Métricas generadas."
+
+artifacts:
+  files:
+    - '**/*'
+  base-directory: implementacion
+
+reports:
+  coverage-report:
+    files:
+      - 'coverage-report.xml'
+    file-format: 'JUNITXML'
+  lint-report:
+    files:
+      - 'lint-report.xml'
+    file-format: 'JUNITXML'
+
+cache:
+  paths:
+    - 'node_modules/**/*'

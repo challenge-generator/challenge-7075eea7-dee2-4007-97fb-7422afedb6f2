@@ -1,0 +1,35 @@
+Origen,Destino,Tipo Origen,Tipo Destino,Obligatoriedad,Regla de Transformación,Notas
+idServicio,id,string,string,Obligatorio,"Mapeo directo","Identificador único del servicio"
+nombreServicio,name,string,string,Obligatorio,"Mapeo directo","Nombre descriptivo del servicio"
+versionServicio,version,string,string,Obligatorio,"Mapeo directo","Versión del servicio en formato X.Y.Z"
+descripcionServicio,description,string,string,Opcional,"Mapeo directo","Descripción del servicio"
+endpointServicio,endpoint,string,string,Obligatorio,"Validar formato URL","URL del endpoint del servicio"
+tipoServicio,type,string,enum(OSB,REST,SOAP,GRAPHQL),Obligatorio,"Transformar según catálogo de tipos","Tipo de servicio (OSB, REST, SOAP, GRAPHQL)"
+estadoServicio,status,string,enum(ACTIVE,INACTIVE,DEPRECATED),Obligatorio,"Transformar según catálogo de estados","Estado del servicio"
+propietarioServicio,owner,string,string,Obligatorio,"Validar formato email","Email del propietario del servicio"
+fechaCreacion,createdAt,date,date,Obligatorio,"Formatear a ISO 8601","Fecha de creación del servicio"
+fechaModificacion,updatedAt,date,date,Opcional,"Formatear a ISO 8601","Fecha de última modificación"
+ambientesDespliegue,environments,array,array,Obligatorio,"Mapeo directo","Lista de ambientes donde está desplegado"
+requisitosSeguridad,securityRequirements,object,object,Obligatorio,"Validar esquema JSON","Requisitos de seguridad del servicio"
+metricas,metrics,object,object,Opcional,"Validar esquema JSON","Métricas de desempeño del servicio"
+
+## Descripción del Mapeo
+
+Este archivo CSV define el mapeo de datos entre el sistema de origen (catálogo de servicios SOA) y el sistema de destino (pipeline de CI/CD). Las columnas incluyen:
+
+- **Origen**: Campo en el sistema de origen.
+- **Destino**: Campo en el sistema de destino.
+- **Tipo Origen/Destino**: Tipos de datos esperados.
+- **Obligatoriedad**: Indica si el campo es obligatorio u opcional.
+- **Regla de Transformación**: Reglas aplicadas durante el mapeo.
+- **Notas**: Información adicional sobre el campo.
+
+### Ejemplos de Transformación
+- **tipoServicio**: Se transforma desde un string a un enum basado en un catálogo predefinido.
+- **estadoServicio**: Se valida contra un catálogo de estados permitidos.
+- **requisitosSeguridad**: Se valida contra un esquema JSON definido.
+
+### Validaciones
+- **endpointServicio**: Debe ser una URL válida.
+- **propietarioServicio**: Debe ser un email válido.
+- **fechaCreacion/fechaModificacion**: Deben estar en formato ISO 8601.

@@ -1,0 +1,447 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Pipeline de CI/CD para integración SOA con prácticas DevOps'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: 'soa-devops-integration'
+    Description: 'Nombre del proyecto'
+  RepositoryName:
+    Type: String
+    Default: 'soa-services-repo'
+    Description: 'Nombre del repositorio de código'
+  BranchName:
+    Type: String
+    Default: 'main'
+    Description: 'Nombre de la rama principal'
+  ArtifactStoreBucket:
+    Type: String
+    Description: 'Nombre del bucket S3 para almacenar artefactos'
+
+Resources:
+  # Rol de IAM para CodePipeline
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-CodePipelineRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodePipelineAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:PutObjectAcl
+                  - s3:PutObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${ArtifactStoreBucket}"
+                  - !Sub "arn:aws:s3:::${ArtifactStoreBucket}/*"
+              - Effect: Allow
+                Action:
+                  - codecommit:CancelUploadArchive
+                  - codecommit:GetBranch
+                  - codecommit:GetCommit
+                  - codecommit:GetUploadArchiveStatus
+                  - codecommit:UploadArchive
+                Resource: !Sub "arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${RepositoryName}"
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:UpdateStack
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:SetStackPolicy
+                  - cloudformation:ValidateTemplate
+                Resource: "*"
+
+  # Rol de IAM para CodeBuild
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-CodeBuildRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${ArtifactStoreBucket}/*"
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:GetRepositoryPolicy
+                  - ecr:DescribeRepositories
+                  - ecr:ListImages
+                  - ecr:DescribeImages
+                  - ecr:BatchGetImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudformation:ValidateTemplate
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - codecommit:GitPull
+                Resource: !Sub "arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${RepositoryName}"
+
+  # Proyecto de CodeBuild para compilación y pruebas unitarias
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${ProjectName}-Build"
+      Description: 'Compilación y pruebas unitarias del proyecto SOA'
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
+        EnvironmentVariables:
+          - Name: ARTIFACT_BUCKET
+            Value: !Ref ArtifactStoreBucket
+          - Name: PROJECT_NAME
+            Value: !Ref ProjectName
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Sub |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                nodejs: 14
+                python: 3.8
+              commands:
+                - echo "Instalando dependencias..."
+                - npm install -g @redocly/cli
+                - pip install boto3
+                - pip install pytest
+            pre_build:
+              commands:
+                - echo "Validando contrato OpenAPI..."
+                - redocly lint openapi.yaml
+                - echo "Ejecutando pruebas unitarias..."
+                - pytest tests/unit/
+            build:
+              commands:
+                - echo "Compilando servicios SOA..."
+                - mvn clean package -DskipTests
+                - echo "Generando artefactos..."
+            post_build:
+              commands:
+                - echo "Subiendo artefactos a S3..."
+                - aws s3 cp target/*.jar s3://${ArtifactStoreBucket}/${ProjectName}/builds/
+          artifacts:
+            files:
+              - target/*.jar
+            discard-paths: yes
+      TimeoutInMinutes: 15
+
+  # Proyecto de CodeBuild para pruebas de integración
+  IntegrationTestProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${ProjectName}-IntegrationTests"
+      Description: 'Pruebas de integración del proyecto SOA'
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
+        EnvironmentVariables:
+          - Name: ARTIFACT_BUCKET
+            Value: !Ref ArtifactStoreBucket
+          - Name: PROJECT_NAME
+            Value: !Ref ProjectName
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Sub |
+          version: 0.2
+          phases:
+            install:
+              commands:
+                - echo "Instalando dependencias para pruebas de integración..."
+                - pip install pytest requests
+                - npm install -g newman
+            pre_build:
+              commands:
+                - echo "Descargando artefactos..."
+                - aws s3 cp s3://${ArtifactStoreBucket}/${ProjectName}/builds/*.jar .
+            build:
+              commands:
+                - echo "Ejecutando pruebas de integración..."
+                - pytest tests/integration/
+                - echo "Ejecutando pruebas de contrato con Newman..."
+                - newman run tests/contract/postman_collection.json --environment tests/contract/postman_environment.json
+          artifacts:
+            files:
+              - '**/*'
+            base-directory: 'test-reports'
+      TimeoutInMinutes: 20
+
+  # Proyecto de CodeBuild para despliegue
+  DeployProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${ProjectName}-Deploy"
+      Description: 'Despliegue de servicios SOA'
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
+        EnvironmentVariables:
+          - Name: ARTIFACT_BUCKET
+            Value: !Ref ArtifactStoreBucket
+          - Name: PROJECT_NAME
+            Value: !Ref ProjectName
+          - Name: AWS_REGION
+            Value: !Ref AWS::Region
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Sub |
+          version: 0.2
+          phases:
+            install:
+              commands:
+                - echo "Instalando herramientas de despliegue..."
+                - pip install boto3
+            pre_build:
+              commands:
+                - echo "Descargando artefactos..."
+                - aws s3 cp s3://${ArtifactStoreBucket}/${ProjectName}/builds/*.jar .
+            build:
+              commands:
+                - echo "Desplegando servicios SOA..."
+                - aws cloudformation deploy --template-file implementacion/deployment-template.yml --stack-name ${ProjectName}-stack --capabilities CAPABILITY_IAM
+                - echo "Ejecutando pruebas de smoke..."
+                - python tests/smoke/smoke_tests.py
+          artifacts:
+            files:
+              - '**/*'
+            base-directory: 'deployment-reports'
+      TimeoutInMinutes: 30
+
+  # Proyecto de CodeBuild para seguridad (Shift-Left Security)
+  SecurityScanProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${ProjectName}-SecurityScan"
+      Description: 'Análisis de seguridad del código y dependencias'
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
+        EnvironmentVariables:
+          - Name: ARTIFACT_BUCKET
+            Value: !Ref ArtifactStoreBucket
+          - Name: PROJECT_NAME
+            Value: !Ref ProjectName
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Sub |
+          version: 0.2
+          phases:
+            install:
+              commands:
+                - echo "Instalando herramientas de seguridad..."
+                - pip install bandit
+                - npm install -g snyk
+                - wget https://github.com/zaproxy/zaproxy/releases/download/v2.11.1/ZAP_2.11.1_Linux.tar.gz
+                - tar -xvf ZAP_2.11.1_Linux.tar.gz
+            pre_build:
+              commands:
+                - echo "Ejecutando análisis estático de código..."
+                - bandit -r src/ -f json -o security-report.json
+                - echo "Analizando dependencias con Snyk..."
+                - snyk test --json > snyk-report.json
+            build:
+              commands:
+                - echo "Ejecutando escaneo DAST con OWASP ZAP..."
+                - ./ZAP_2.11.1/zap.sh -cmd -quickurl http://example.com -quickout zap-report.html -quickprogress
+            post_build:
+              commands:
+                - echo "Subiendo reportes de seguridad..."
+                - aws s3 cp security-report.json s3://${ArtifactStoreBucket}/${ProjectName}/security-reports/
+                - aws s3 cp snyk-report.json s3://${ArtifactStoreBucket}/${ProjectName}/security-reports/
+                - aws s3 cp zap-report.html s3://${ArtifactStoreBucket}/${ProjectName}/security-reports/
+          artifacts:
+            files:
+              - security-report.json
+              - snyk-report.json
+              - zap-report.html
+      TimeoutInMinutes: 25
+
+  # Pipeline de CI/CD
+  CIPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub "${ProjectName}-Pipeline"
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactStoreBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              Configuration:
+                RepositoryName: !Ref RepositoryName
+                BranchName: !Ref BranchName
+                PollForSourceChanges: false
+              OutputArtifacts:
+                - Name: SourceOutput
+              RunOrder: 1
+
+        - Name: SecurityScan
+          Actions:
+            - Name: SecurityScanAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref SecurityScanProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: SecurityScanOutput
+              RunOrder: 1
+
+        - Name: Build
+          Actions:
+            - Name: BuildAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref BuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+
+        - Name: IntegrationTests
+          Actions:
+            - Name: IntegrationTestsAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref IntegrationTestProject
+              InputArtifacts:
+                - Name: BuildOutput
+              OutputArtifacts:
+                - Name: IntegrationTestsOutput
+              RunOrder: 1
+
+        - Name: Deploy
+          Actions:
+            - Name: DeployAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref DeployProject
+              InputArtifacts:
+                - Name: IntegrationTestsOutput
+              RunOrder: 1
+
+  # Evento para disparar el pipeline cuando hay cambios en el repositorio
+  CodeCommitEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${ProjectName}-CodeCommitEventRule"
+      EventPattern:
+        source:
+          - aws.codecommit
+        detail-type:
+          - 'CodeCommit Repository State Change'
+        resources:
+          - !Sub "arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${RepositoryName}"
+        detail:
+          referenceType:
+            - branch
+          referenceName:
+            - !Ref BranchName
+      Targets:
+        - Arn: !Sub "arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${CIPipeline}"
+          Id: !Sub "${ProjectName}-CodePipelineTarget"
+          RoleArn: !GetAtt CodePipelineRole.Arn
+
+  # Permiso para que el evento pueda invocar el pipeline
+  EventBridgePermission:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "${ProjectName}-EventBridgePermission"
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: codepipeline:StartPipelineExecution
+            Resource: !Sub "arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${CIPipeline}"
+      Roles:
+        - !Ref CodePipelineRole
